@@ -1,0 +1,17 @@
+*.md
+.codegraph/
+
+# Xcode build output
+DerivedData/
+build/
+.build/
+*.app
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# Xcode user-specific state
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint

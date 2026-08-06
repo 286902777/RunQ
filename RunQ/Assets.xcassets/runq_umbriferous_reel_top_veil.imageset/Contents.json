@@ -1,0 +1,8 @@
+{
+  "images" : [
+    { "filename" : "runq_umbriferous_reel_top_veil.png", "idiom" : "universal", "scale" : "1x" },
+    { "filename" : "runq_umbriferous_reel_top_veil@2x.png", "idiom" : "universal", "scale" : "2x" },
+    { "filename" : "runq_umbriferous_reel_top_veil@3x.png", "idiom" : "universal", "scale" : "3x" }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}

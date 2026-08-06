@@ -1,0 +1,23 @@
+{
+  "images" : [
+    {
+      "filename" : "runq_forgot_password_hero.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "filename" : "runq_forgot_password_hero@2x.png",
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "filename" : "runq_forgot_password_hero@3x.png",
+      "idiom" : "universal",
+      "scale" : "3x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

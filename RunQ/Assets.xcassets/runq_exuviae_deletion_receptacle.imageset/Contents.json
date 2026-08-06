@@ -1,0 +1,23 @@
+{
+  "images" : [
+    {
+      "filename" : "runq_exuviae_deletion_receptacle.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "filename" : "runq_exuviae_deletion_receptacle@2x.png",
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "filename" : "runq_exuviae_deletion_receptacle@3x.png",
+      "idiom" : "universal",
+      "scale" : "3x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

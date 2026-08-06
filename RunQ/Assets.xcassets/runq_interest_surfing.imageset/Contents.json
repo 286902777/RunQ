@@ -1,0 +1,8 @@
+{
+  "images" : [
+    { "filename" : "runq_interest_surfing.png", "idiom" : "universal", "scale" : "1x" },
+    { "filename" : "runq_interest_surfing@2x.png", "idiom" : "universal", "scale" : "2x" },
+    { "filename" : "runq_interest_surfing@3x.png", "idiom" : "universal", "scale" : "3x" }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}

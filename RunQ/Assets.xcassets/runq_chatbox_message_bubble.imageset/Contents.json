@@ -1,0 +1,8 @@
+{
+  "images" : [
+    { "filename" : "runq_chatbox_message_bubble.png", "idiom" : "universal", "scale" : "1x", "resizing" : { "cap-insets" : { "bottom" : 34, "left" : 30, "right" : 30, "top" : 34 }, "mode" : "stretch" } },
+    { "filename" : "runq_chatbox_message_bubble@2x.png", "idiom" : "universal", "scale" : "2x", "resizing" : { "cap-insets" : { "bottom" : 68, "left" : 60, "right" : 60, "top" : 68 }, "mode" : "stretch" } },
+    { "filename" : "runq_chatbox_message_bubble@3x.png", "idiom" : "universal", "scale" : "3x", "resizing" : { "cap-insets" : { "bottom" : 102, "left" : 90, "right" : 90, "top" : 102 }, "mode" : "stretch" } }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}

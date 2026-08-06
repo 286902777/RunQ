@@ -1,0 +1,23 @@
+{
+  "images" : [
+    {
+      "filename" : "runq_velutinous_wallet_zenith.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "filename" : "runq_velutinous_wallet_zenith@2x.png",
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "filename" : "runq_velutinous_wallet_zenith@3x.png",
+      "idiom" : "universal",
+      "scale" : "3x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
