@@ -113,8 +113,12 @@ final class RunQInsufficientBalanceViewController: UIViewController {
         guard !isConfirming else { return }
         isConfirming = true
         confirmButton.isEnabled = false
-        let dismissCompletion = onRecharge
-        dismiss(animated: true, completion: dismissCompletion)
+        let rechargeAction = onRecharge
+        dismiss(animated: true) {
+            DispatchQueue.main.async {
+                rechargeAction?()
+            }
+        }
     }
 }
 

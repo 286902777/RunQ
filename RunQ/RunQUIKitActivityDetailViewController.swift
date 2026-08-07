@@ -40,6 +40,17 @@ final class RunQUIKitActivityDetailViewController: UIViewController {
         configureKeyboard()
         reloadLikeState()
         reloadComments()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(socialDataDidChange),
+            name: .runQSocialDataDidChange,
+            object: dataStore
+        )
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        refreshVisibleContent()
     }
 
     override func viewDidLayoutSubviews() {
@@ -53,6 +64,27 @@ final class RunQUIKitActivityDetailViewController: UIViewController {
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func socialDataDidChange() {
+        refreshVisibleContent()
+    }
+
+    private func refreshVisibleContent() {
+        guard dataStore.isUserVisible(
+            post.authorID,
+            to: sessionStore.currentUser?.id
+        ) else {
+            view.endEditing(true)
+            if navigationController?.topViewController === self {
+                navigationController?.popViewController(animated: true)
+            } else {
+                dismiss(animated: true)
+            }
+            return
+        }
+        reloadLikeState()
+        reloadComments()
+    }
 
     private func configureNavigation() {
         view.addSubview(navigationHeader)
@@ -313,8 +345,12 @@ final class RunQUIKitActivityDetailViewController: UIViewController {
     }
 
     private func showReport() {
+        showReport(for: post.authorID)
+    }
+
+    private func showReport(for targetUserID: String) {
         guard requireAccount() else { return }
-        guard post.authorID != sessionStore.currentUser?.id else { return }
+        guard targetUserID != sessionStore.currentUser?.id else { return }
         let dialog = RunQUIKitReportViewController()
         dialog.modalPresentationStyle = .overFullScreen
         dialog.onBlock = { [weak self] in
@@ -322,14 +358,13 @@ final class RunQUIKitActivityDetailViewController: UIViewController {
             do {
                 try dataStore.setBlocked(
                     sourceUserID: userID,
-                    targetUserID: post.authorID,
+                    targetUserID: targetUserID,
                     isBlocked: true
                 )
                 RunQToastPresenter.show(
                     "Added to blocked list.",
                     on: navigationController?.view ?? view
                 )
-                navigationController?.popViewController(animated: true)
             } catch {
                 showToast("Unable to block this user.")
             }
@@ -401,10 +436,16 @@ extension RunQUIKitActivityDetailViewController: UITableViewDataSource, UITableV
             for: indexPath
         ) as! RunQActivityCommentCell
         let comment = comments[indexPath.row]
-        cell.configure(comment)
+        let canReport = comment.authorID != nil
+            && comment.authorID != sessionStore.currentUser?.id
+        cell.configure(comment, showsReport: canReport)
         cell.onAvatar = { [weak self] in
             guard let authorID = comment.authorID else { return }
             self?.openUserProfile(authorID)
+        }
+        cell.onReport = { [weak self] in
+            guard let authorID = comment.authorID else { return }
+            self?.showReport(for: authorID)
         }
         return cell
     }
@@ -732,10 +773,12 @@ private final class RunQActivityDetailImageCell: UICollectionViewCell {
 private final class RunQActivityCommentCell: UITableViewCell {
     static let reuseIdentifier = "RunQActivityCommentCell"
     var onAvatar: (() -> Void)?
+    var onReport: (() -> Void)?
     private let avatar = UIImageView()
     private let author = UILabel()
     private let message = UILabel()
     private let time = UILabel()
+    private let reportButton = UIButton(type: .custom)
     private let avatarButton = UIButton(type: .custom)
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -753,12 +796,20 @@ private final class RunQActivityCommentCell: UITableViewCell {
         time.textColor = UIColor.white.withAlphaComponent(0.55)
         time.font = AppFont.barlow(size: 13)
         time.textAlignment = .right
+        reportButton.setImage(UIImage(named: "runq_square_report"), for: .normal)
+        reportButton.accessibilityLabel = "Report comment"
+        reportButton.addAction(
+            UIAction { [weak self] _ in self?.onReport?() },
+            for: .touchUpInside
+        )
         avatarButton.accessibilityLabel = "Open commenter profile"
         avatarButton.addAction(
             UIAction { [weak self] _ in self?.onAvatar?() },
             for: .touchUpInside
         )
-        [avatar, avatarButton, author, message, time].forEach(contentView.addSubview)
+        [avatar, avatarButton, author, message, time, reportButton].forEach(
+            contentView.addSubview
+        )
         avatar.snp.makeConstraints { make in
             make.leading.equalToSuperview().offset(20)
             make.top.equalToSuperview().offset(14)
@@ -776,9 +827,14 @@ private final class RunQActivityCommentCell: UITableViewCell {
             make.trailing.equalTo(time.snp.leading).offset(-12)
         }
         time.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().offset(-20)
+            make.trailing.equalTo(reportButton.snp.leading).offset(-4)
             make.centerY.equalTo(avatar)
             make.width.equalTo(46)
+        }
+        reportButton.snp.makeConstraints { make in
+            make.trailing.equalToSuperview().offset(-16)
+            make.centerY.equalTo(time)
+            make.size.equalTo(28)
         }
     }
 
@@ -788,13 +844,27 @@ private final class RunQActivityCommentCell: UITableViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         onAvatar = nil
+        onReport = nil
     }
 
-    func configure(_ comment: RunQCommentRecord) {
-        avatar.image = UIImage(named: comment.authorAvatarAssetName)
+    func configure(_ comment: RunQCommentRecord, showsReport: Bool) {
+        avatar.image = comment.authorAvatarData.flatMap(UIImage.init(data:))
+            ?? UIImage(named: comment.authorAvatarAssetName)
+            ?? UIImage(named: "runq_square_author_avatar")
         author.text = comment.authorName.uppercased()
         message.text = comment.text
         time.text = Self.timeFormatter.string(from: comment.createdAt)
+        reportButton.isHidden = !showsReport
+        reportButton.isUserInteractionEnabled = showsReport
+        time.snp.remakeConstraints { make in
+            if showsReport {
+                make.trailing.equalTo(reportButton.snp.leading).offset(-4)
+            } else {
+                make.trailing.equalToSuperview().offset(-20)
+            }
+            make.centerY.equalTo(avatar)
+            make.width.equalTo(46)
+        }
     }
 
     private static let timeFormatter: DateFormatter = {

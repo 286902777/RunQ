@@ -1967,6 +1967,12 @@ final class RunQUIKitSearchViewController: UIViewController {
         configureSearchLoading()
         configureKeyboard()
         updateEmptyState()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(socialDataDidChange),
+            name: .runQSocialDataDidChange,
+            object: dataStore
+        )
 
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--search-results-preview") {
@@ -1980,6 +1986,21 @@ final class RunQUIKitSearchViewController: UIViewController {
         super.viewDidAppear(animated)
         navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         navigationController?.interactivePopGestureRecognizer?.delegate = nil
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func socialDataDidChange() {
+        let query = searchField.text?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ) ?? ""
+        guard !query.isEmpty else {
+            results = []
+            collectionView.reloadData()
+            updateEmptyState()
+            return
+        }
+        completeSearch(query: query)
     }
 
     private func configureNavigation() {
@@ -2368,7 +2389,6 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
     private enum FeedSelection {
         case albums
         case posts
-        case likes
     }
 
     private let dataStore: RunQDataStore
@@ -2380,7 +2400,6 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
     private let followButton = UIButton(type: .custom)
     private let albumButton = UIButton(type: .custom)
     private let postsButton = UIButton(type: .custom)
-    private let likesButton = UIButton(type: .custom)
     private let albumDivider = UIView()
     private let albumIndicator = UIView()
     private let feedContainer = UIView()
@@ -2458,10 +2477,23 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
             name: .runQItinerariesDidChange,
             object: dataStore
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(socialDataDidChange),
+            name: .runQSocialDataDidChange,
+            object: dataStore
+        )
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        guard dataStore.isUserVisible(
+            userID,
+            to: sessionStore.currentUser?.id
+        ) else {
+            navigationController?.popViewController(animated: true)
+            return
+        }
         refreshFeed()
         rebuildItineraryRows()
         updateFollowAppearance()
@@ -2479,6 +2511,22 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
               changedUserID == userID else { return }
         rebuildItineraryRows()
         view.layoutIfNeeded()
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func socialDataDidChange() {
+        guard dataStore.isUserVisible(
+            userID,
+            to: sessionStore.currentUser?.id
+        ) else {
+            navigationController?.popViewController(animated: true)
+            return
+        }
+        profile = dataStore.user(id: userID)
+        refreshFeed()
+        rebuildItineraryRows()
+        updateFollowAppearance()
     }
 
     private func configureCanvas(for profile: RunQUserRecord) {
@@ -2544,7 +2592,7 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
 
         [hero, veil, nameLabel, followButton, ageBadge,
          popularityBadge, followers, following, reserveButton, profileTitle,
-         profileSummary, itineraryCard, albumButton, postsButton, likesButton,
+         profileSummary, itineraryCard, albumButton, postsButton,
          albumDivider, albumIndicator, feedContainer].forEach(contentView.addSubview)
         feedContainer.addSubview(galleryView)
         feedContainer.addSubview(postListView)
@@ -2616,11 +2664,6 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
         }
         postsButton.snp.makeConstraints { make in
             make.leading.equalTo(albumButton.snp.trailing).offset(25)
-            make.centerY.equalTo(albumButton)
-            make.height.equalTo(36)
-        }
-        likesButton.snp.makeConstraints { make in
-            make.leading.equalTo(postsButton.snp.trailing).offset(25)
             make.centerY.equalTo(albumButton)
             make.height.equalTo(36)
         }
@@ -2778,10 +2821,6 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
         postsButton.setTitleColor(UIColor.white.withAlphaComponent(0.62), for: .normal)
         postsButton.titleLabel?.font = AppFont.barlow(size: 16)
         postsButton.addAction(UIAction { [weak self] _ in self?.showPosts() }, for: .touchUpInside)
-        likesButton.setTitle("LIKE", for: .normal)
-        likesButton.setTitleColor(UIColor.white.withAlphaComponent(0.62), for: .normal)
-        likesButton.titleLabel?.font = AppFont.barlow(size: 16)
-        likesButton.addAction(UIAction { [weak self] _ in self?.showLikes() }, for: .touchUpInside)
         albumDivider.backgroundColor = UIColor.white.withAlphaComponent(0.3)
         albumIndicator.backgroundColor = UIColor(red: 1, green: 88 / 255, blue: 24 / 255, alpha: 1)
         albumIndicator.layer.cornerRadius = 1.5
@@ -3025,11 +3064,6 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
         selectFeed(.posts)
     }
 
-    private func showLikes() {
-        guard requireAccount() else { return }
-        selectFeed(.likes)
-    }
-
     private func selectFeed(_ selection: FeedSelection) {
         guard selectedFeed != selection else { return }
         selectedFeed = selection
@@ -3043,7 +3077,7 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
             visibleTo: sessionStore.currentUser?.id
         )
         let showsPostSection = !profilePosts.isEmpty
-        [albumButton, postsButton, likesButton, albumDivider,
+        [albumButton, postsButton, albumDivider,
          albumIndicator, feedContainer].forEach {
             $0.isHidden = !showsPostSection
         }
@@ -3066,12 +3100,6 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
         case .posts:
             displayedPosts = profilePosts
             showPostList(emptyMessage: "No posts yet.")
-        case .likes:
-            displayedPosts = dataStore.likedPosts(
-                by: userID,
-                visibleTo: sessionStore.currentUser?.id
-            )
-            showPostList(emptyMessage: "No liked posts yet.")
         }
         updateFeedTabs(animated: false)
     }
@@ -3081,7 +3109,7 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
             posts: displayedPosts,
             currentUserID: sessionStore.currentUser?.id,
             emptyMessage: emptyMessage,
-            displaysLikedState: selectedFeed == .likes
+            displaysLikedState: false
         )
         feedHeight?.update(offset: displayedPosts.isEmpty ? 0 : postListView.requiredHeight)
         galleryView.isHidden = true
@@ -3092,12 +3120,10 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
         let inactive = UIColor.white.withAlphaComponent(0.62)
         albumButton.setTitleColor(selectedFeed == .albums ? .white : inactive, for: .normal)
         postsButton.setTitleColor(selectedFeed == .posts ? .white : inactive, for: .normal)
-        likesButton.setTitleColor(selectedFeed == .likes ? .white : inactive, for: .normal)
         let button: UIButton
         switch selectedFeed {
         case .albums: button = albumButton
         case .posts: button = postsButton
-        case .likes: button = likesButton
         }
         albumIndicator.snp.remakeConstraints { make in
             make.leading.equalTo(button)
@@ -3115,20 +3141,45 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
 
     private func openReservation() {
         guard requireAccount() else { return }
+        guard let category = profile?.category else {
+            RunQToastPresenter.show(
+                "This profile is unavailable.",
+                on: view
+            )
+            return
+        }
         let toll = RunQUIKitTollViewController(
             dataStore: dataStore,
             sessionStore: sessionStore,
             purchaseDescription: "send this reservation"
         )
         toll.modalPresentationStyle = .overFullScreen
+        toll.onRechargeRequested = { [weak self] in
+            guard let self else { return }
+            let wallet = RunQUIKitWalletViewController(
+                title: "WALLET",
+                dataStore: dataStore,
+                sessionStore: sessionStore
+            )
+            wallet.hidesBottomBarWhenPushed = true
+            navigationController?.pushViewController(wallet, animated: true)
+        }
         toll.onCompleted = { [weak self] in
             guard let self else { return }
             let reservation = RunQReservationViewController(
                 targetUserID: userID,
+                category: category,
                 dataStore: dataStore,
                 sessionStore: sessionStore
             )
             reservation.modalPresentationStyle = .overFullScreen
+            reservation.onReservationSent = { [weak self] in
+                guard let self else { return }
+                RunQToastPresenter.show(
+                    "Reservation sent.",
+                    on: navigationController?.view ?? view
+                )
+            }
             present(reservation, animated: true)
         }
         present(toll, animated: true)
@@ -3180,7 +3231,6 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
                     "Added to blocked list.",
                     on: navigationController?.view ?? view
                 )
-                navigationController?.popViewController(animated: true)
             } catch {
                 RunQToastPresenter.show(
                     "Unable to block this user.",
@@ -3206,7 +3256,6 @@ final class RunQUIKitOtherProfileViewController: UIViewController,
             do {
                 try dataStore.setBlocked(sourceUserID: currentUserID, targetUserID: userID, isBlocked: true)
                 RunQToastPresenter.show("Added to blocked list.", on: navigationController?.view ?? view)
-                navigationController?.popViewController(animated: true)
             } catch {
                 RunQToastPresenter.show("Unable to block this user.", on: navigationController?.view ?? view)
             }

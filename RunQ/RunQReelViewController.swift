@@ -157,9 +157,8 @@ final class RunQUIKitReelViewController: UIViewController {
     private func preparePlaybackSession() {
         let audioSession = AVAudioSession.sharedInstance()
         try? audioSession.setCategory(
-            .ambient,
-            mode: .moviePlayback,
-            options: [.mixWithOthers]
+            .playback,
+            mode: .moviePlayback
         )
         try? audioSession.setActive(true)
     }
@@ -376,6 +375,15 @@ extension RunQUIKitReelViewController:
         let isLiked = currentUserID.map {
             dataStore.isVideoLiked(videoID: reel.id, userID: $0)
         } ?? false
+        let isFollowing = currentUserID.map {
+            dataStore.isFollowing(
+                sourceUserID: $0,
+                targetUserID: targetUserID
+            )
+        } ?? false
+        let canFollow = currentUserID != nil
+            && sessionStore.currentUser?.isGuest == false
+            && !isCurrentUserContent
         cell.configure(
             username: "@\(reel.authorName.uppercased())",
             caption: reel.caption,
@@ -385,6 +393,8 @@ extension RunQUIKitReelViewController:
             sceneAssetName: reel.fallbackImageAssetName,
             avatarAssetName: reel.authorAvatarAssetName,
             isLiked: isLiked,
+            isFollowing: isFollowing,
+            showsFollow: canFollow,
             showsReport: !isCurrentUserContent
         )
         cell.onLike = { [weak self] in
@@ -437,6 +447,22 @@ extension RunQUIKitReelViewController:
         cell.onAvatar = { [weak self] in
             self?.openUserProfile(targetUserID)
         }
+        cell.onFollow = canFollow && !isFollowing ? { [weak self] in
+            guard let self,
+                  let currentUser = sessionStore.currentUser,
+                  !currentUser.isGuest,
+                  currentUser.id != targetUserID else { return }
+            do {
+                try dataStore.setFollowing(
+                    sourceUserID: currentUser.id,
+                    targetUserID: targetUserID,
+                    isFollowing: true
+                )
+                showToast("Followed.")
+            } catch {
+                showToast("Unable to follow this user.")
+            }
+        } : nil
         return cell
     }
 
@@ -481,6 +507,7 @@ private final class RunQReelCell: UICollectionViewCell {
     var onComments: (() -> Void)?
     var onAvatar: (() -> Void)?
     var onLike: (() -> Void)?
+    var onFollow: (() -> Void)?
 
     private let sceneView = UIImageView()
     private let playerView = RunQReelPlayerView()
@@ -534,9 +561,11 @@ private final class RunQReelCell: UICollectionViewCell {
         onComments = nil
         onAvatar = nil
         onLike = nil
+        onFollow = nil
         isLiked = false
         isFollowing = false
-        followButton.alpha = 1
+        followButton.isHidden = true
+        followButton.isEnabled = false
         queuePlayer?.pause()
         queuePlayer = nil
         playerLooper = nil
@@ -555,6 +584,8 @@ private final class RunQReelCell: UICollectionViewCell {
         sceneAssetName: String,
         avatarAssetName: String,
         isLiked: Bool,
+        isFollowing: Bool,
+        showsFollow: Bool,
         showsReport: Bool
     ) {
         representedMediaFileName = mediaFileName
@@ -566,10 +597,13 @@ private final class RunQReelCell: UICollectionViewCell {
         usernameLabel.text = username
         captionLabel.text = caption
         self.isLiked = isLiked
+        self.isFollowing = isFollowing
         baseLikeCount = max(0, likeCount - (isLiked ? 1 : 0))
         likeCountLabel.text = "\(likeCount)"
         commentCountLabel.text = "\(commentCount)"
         reportButton.isHidden = !showsReport
+        followButton.isHidden = !showsFollow || isFollowing
+        followButton.isEnabled = showsFollow && !isFollowing
         updateLikeAppearance()
     }
 
@@ -608,7 +642,8 @@ private final class RunQReelCell: UICollectionViewCell {
         }
         let item = AVPlayerItem(url: url)
         let player = AVQueuePlayer()
-        player.isMuted = true
+        player.isMuted = false
+        player.volume = 1
         player.automaticallyWaitsToMinimizeStalling = false
         queuePlayer = player
         playerLooper = AVPlayerLooper(player: player, templateItem: item)
@@ -670,9 +705,8 @@ private final class RunQReelCell: UICollectionViewCell {
         followButton.setImage(UIImage(named: "runq_solaris_reel_follow"), for: .normal)
         followButton.accessibilityLabel = "Follow"
         followButton.addAction(UIAction { [weak self] _ in
-            guard let self else { return }
-            isFollowing.toggle()
-            followButton.alpha = isFollowing ? 0.55 : 1
+            guard let self, !isFollowing else { return }
+            onFollow?()
         }, for: .touchUpInside)
 
         usernameLabel.textColor = .white
@@ -819,6 +853,27 @@ private final class RunQVideoCommentsViewController: UIViewController,
         configureComposer()
         configureTable()
         configureKeyboardHandling()
+        reloadComments()
+        reloadLikeState()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(socialDataDidChange),
+            name: .runQSocialDataDidChange,
+            object: dataStore
+        )
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func socialDataDidChange() {
+        guard dataStore.isUserVisible(
+            video.authorID,
+            to: sessionStore.currentUser?.id
+        ) else {
+            view.endEditing(true)
+            dismiss(animated: true)
+            return
+        }
         reloadComments()
         reloadLikeState()
     }
@@ -1080,6 +1135,29 @@ private final class RunQVideoCommentsViewController: UIViewController,
         updateLikeAppearance()
     }
 
+    private func showReport(for comment: RunQVideoCommentRecord) {
+        guard let currentUser = sessionStore.currentUser,
+              !currentUser.isGuest,
+              let targetUserID = comment.authorID,
+              targetUserID != currentUser.id else { return }
+        let dialog = RunQUIKitReportViewController()
+        dialog.modalPresentationStyle = .overFullScreen
+        dialog.onBlock = { [weak self] in
+            guard let self else { return }
+            do {
+                try dataStore.setBlocked(
+                    sourceUserID: currentUser.id,
+                    targetUserID: targetUserID,
+                    isBlocked: true
+                )
+                RunQToastPresenter.show("Added to blocked list.", on: view)
+            } catch {
+                RunQToastPresenter.show("Unable to block this user.", on: view)
+            }
+        }
+        present(dialog, animated: true)
+    }
+
     private func updateLikeAppearance() {
         likeButton.setImage(
             UIImage(
@@ -1147,10 +1225,17 @@ private final class RunQVideoCommentsViewController: UIViewController,
         let comment = comments[indexPath.row]
         let canOpenProfile = comment.authorID != nil
             && comment.authorID != sessionStore.currentUser?.id
-        cell.configure(comment, isAvatarInteractive: canOpenProfile)
+        cell.configure(
+            comment,
+            isAvatarInteractive: canOpenProfile,
+            showsReport: canOpenProfile
+        )
         cell.onAvatar = { [weak self] in
             guard let authorID = comment.authorID else { return }
             self?.onOpenProfile?(authorID)
+        }
+        cell.onReport = { [weak self] in
+            self?.showReport(for: comment)
         }
         return cell
     }
@@ -1160,12 +1245,14 @@ private final class RunQVideoCommentCell: UITableViewCell {
     static let reuseIdentifier = "RunQVideoCommentCell"
 
     var onAvatar: (() -> Void)?
+    var onReport: (() -> Void)?
 
     private let avatarView = UIImageView()
     private let avatarButton = UIButton(type: .custom)
     private let authorLabel = UILabel()
     private let messageLabel = UILabel()
     private let timeLabel = UILabel()
+    private let reportButton = UIButton(type: .custom)
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -1184,8 +1271,14 @@ private final class RunQVideoCommentCell: UITableViewCell {
         timeLabel.textColor = UIColor.white.withAlphaComponent(0.5)
         timeLabel.font = AppFont.barlow(size: 11)
         timeLabel.textAlignment = .right
+        reportButton.setImage(UIImage(named: "runq_square_report"), for: .normal)
+        reportButton.accessibilityLabel = "Report comment"
+        reportButton.addAction(UIAction { [weak self] _ in
+            self?.onReport?()
+        }, for: .touchUpInside)
 
-        [avatarView, avatarButton, authorLabel, messageLabel, timeLabel].forEach {
+        [avatarView, avatarButton, authorLabel, messageLabel, timeLabel,
+         reportButton].forEach {
             contentView.addSubview($0)
         }
         avatarButton.accessibilityLabel = "Open profile"
@@ -1211,9 +1304,14 @@ private final class RunQVideoCommentCell: UITableViewCell {
             make.trailing.equalTo(timeLabel.snp.leading).offset(-10)
         }
         timeLabel.snp.makeConstraints { make in
-            make.trailing.equalToSuperview().offset(-20)
+            make.trailing.equalTo(reportButton.snp.leading).offset(-4)
             make.centerY.equalTo(avatarView)
             make.width.equalTo(44)
+        }
+        reportButton.snp.makeConstraints { make in
+            make.trailing.equalToSuperview().offset(-16)
+            make.centerY.equalTo(timeLabel)
+            make.size.equalTo(28)
         }
     }
 
@@ -1225,20 +1323,35 @@ private final class RunQVideoCommentCell: UITableViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         onAvatar = nil
+        onReport = nil
         avatarButton.isEnabled = false
         avatarButton.isAccessibilityElement = false
     }
 
     func configure(
         _ comment: RunQVideoCommentRecord,
-        isAvatarInteractive: Bool
+        isAvatarInteractive: Bool,
+        showsReport: Bool
     ) {
-        avatarView.image = UIImage(named: comment.authorAvatarAssetName)
+        avatarView.image = comment.authorAvatarData.flatMap(UIImage.init(data:))
+            ?? UIImage(named: comment.authorAvatarAssetName)
+            ?? UIImage(named: "runq_square_author_avatar")
         authorLabel.text = comment.authorName.uppercased()
         messageLabel.text = comment.text
         timeLabel.text = Self.timeFormatter.string(from: comment.createdAt)
         avatarButton.isEnabled = isAvatarInteractive
         avatarButton.isAccessibilityElement = isAvatarInteractive
+        reportButton.isHidden = !showsReport
+        reportButton.isUserInteractionEnabled = showsReport
+        timeLabel.snp.remakeConstraints { make in
+            if showsReport {
+                make.trailing.equalTo(reportButton.snp.leading).offset(-4)
+            } else {
+                make.trailing.equalToSuperview().offset(-20)
+            }
+            make.centerY.equalTo(avatarView)
+            make.width.equalTo(44)
+        }
     }
 
     private static let timeFormatter: DateFormatter = {

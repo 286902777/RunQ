@@ -627,14 +627,13 @@ extension RunQUIKitJoinChatboxViewController: UITextFieldDelegate {
 
 @MainActor
 final class RunQUIKitTollViewController: UIViewController {
-    var onConfirm: (() throws -> Void)?
     var onCompleted: (() -> Void)?
+    var onRechargeRequested: (() -> Void)?
     private let dataStore: RunQDataStore
     private let sessionStore: CynosureSessionStore
     private let purchaseDescription: String
     private let confirmButton = UIButton(type: .custom)
     private var isConfirming = false
-    private var loadingView: UIView?
 
     init(
         dataStore: RunQDataStore,
@@ -690,7 +689,7 @@ final class RunQUIKitTollViewController: UIViewController {
         messagePanel.addSubview(messageLabel)
 
         confirmButton.setBackgroundImage(
-            UIImage(named: "runq_ember_affinity_cta"),
+            UIImage(named: "runq_btn_bg"),
             for: .normal
         )
         confirmButton.setTitle("SURE", for: .normal)
@@ -797,70 +796,19 @@ final class RunQUIKitTollViewController: UIViewController {
 
         isConfirming = true
         confirmButton.isEnabled = false
-        showLoading()
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            do {
-                _ = try RunQChrysalBalanceVault.shared.apply(
-                    delta: -200,
-                    userID: userID,
-                    dataStore: dataStore
-                )
-                do {
-                    try onConfirm?()
-                } catch {
-                    _ = try? RunQChrysalBalanceVault.shared.apply(
-                        delta: 200,
-                        userID: userID,
-                        dataStore: dataStore
-                    )
-                    throw error
-                }
-                hideLoading()
-                dismiss(animated: true, completion: onCompleted)
-            } catch {
-                hideLoading()
-                isConfirming = false
-                confirmButton.isEnabled = true
-                showToast("Unable to complete this purchase.")
-            }
-        }
+        dismiss(animated: true, completion: onCompleted)
     }
 
     private func showInsufficientBalance() {
         let presenter = presentingViewController
-        dismiss(animated: true) { [dataStore, sessionStore] in
+        let rechargeAction = onRechargeRequested
+        dismiss(animated: true) {
             guard let presenter else { return }
             let dialog = RunQInsufficientBalanceViewController()
             dialog.modalPresentationStyle = .overFullScreen
-            dialog.onRecharge = { [weak presenter] in
-                let wallet = RunQUIKitWalletViewController(
-                    title: "WALLET",
-                    dataStore: dataStore,
-                    sessionStore: sessionStore
-                )
-                presenter?.navigationController?.pushViewController(wallet, animated: true)
-            }
+            dialog.onRecharge = rechargeAction
             presenter.present(dialog, animated: true)
         }
-    }
-
-    private func showLoading() {
-        let overlay = UIView()
-        overlay.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        let indicator = UIActivityIndicatorView(style: .large)
-        indicator.color = .white
-        indicator.startAnimating()
-        overlay.addSubview(indicator)
-        view.addSubview(overlay)
-        overlay.snp.makeConstraints { make in make.edges.equalToSuperview() }
-        indicator.snp.makeConstraints { make in make.center.equalToSuperview() }
-        loadingView = overlay
-    }
-
-    private func hideLoading() {
-        loadingView?.removeFromSuperview()
-        loadingView = nil
     }
 
     private func showToast(_ message: String) {

@@ -273,26 +273,13 @@ final class RunQUIKitBlacklistViewController: UIViewController {
                 showToast("Unfollowed.")
                 reloadProfiles()
             case .followers:
-                let dialog = RunQUIKitReportViewController()
-                dialog.modalPresentationStyle = .overFullScreen
-                dialog.onBlock = { [weak self] in
-                    guard let self else { return }
-                    do {
-                        try dataStore.setBlocked(
-                            sourceUserID: currentUserID,
-                            targetUserID: profile.id,
-                            isBlocked: true
-                        )
-                        RunQToastPresenter.show(
-                            "Added to blocked list.",
-                            on: self.view
-                        )
-                        reloadProfiles()
-                    } catch {
-                        showToast("Unable to update this user.")
-                    }
-                }
-                present(dialog, animated: true)
+                try dataStore.setFollowing(
+                    sourceUserID: currentUserID,
+                    targetUserID: profile.id,
+                    isFollowing: true
+                )
+                reloadProfiles()
+                showToast("Followed successfully.")
             case .blacklist:
                 try dataStore.setBlocked(
                     sourceUserID: currentUserID,
@@ -345,10 +332,17 @@ extension RunQUIKitBlacklistViewController: UITableViewDataSource, UITableViewDe
         ) as! RunQBlacklistProfileCell
         let profile = profiles[indexPath.row]
         let isCurrentUser = profile.id == sessionStore.currentUser?.id
+        let isAlreadyFollowing = sessionStore.currentUser.map {
+            dataStore.isFollowing(
+                sourceUserID: $0.id,
+                targetUserID: profile.id
+            )
+        } ?? false
         let showsAction = !isCurrentUser
+            && (selectedCategory != .followers || !isAlreadyFollowing)
         cell.configure(
             profile: profile,
-            action: selectedCategory == .followers ? .report : .remove,
+            action: selectedCategory == .followers ? .follow : .remove,
             showsAction: showsAction
         )
         if showsAction {
@@ -370,7 +364,7 @@ extension RunQUIKitBlacklistViewController: UITableViewDataSource, UITableViewDe
 private final class RunQBlacklistProfileCell: UITableViewCell {
     enum Action {
         case remove
-        case report
+        case follow
     }
 
     static let reuseIdentifier = "RunQBlacklistProfileCell"
@@ -486,16 +480,14 @@ private final class RunQBlacklistProfileCell: UITableViewCell {
             )
             actionButton.tintColor = nil
             actionButton.accessibilityLabel = "Remove"
-        case .report:
+        case .follow:
             actionButton.setImage(
-                UIImage(systemName: "exclamationmark.triangle.fill")?
-                    .withConfiguration(
-                        UIImage.SymbolConfiguration(pointSize: 23, weight: .bold)
-                    ),
+                UIImage(named: "runq_other_profile_follow_add")?
+                    .withRenderingMode(.alwaysOriginal),
                 for: .normal
             )
-            actionButton.tintColor = .white
-            actionButton.accessibilityLabel = "More"
+            actionButton.tintColor = nil
+            actionButton.accessibilityLabel = "Follow"
         }
     }
 

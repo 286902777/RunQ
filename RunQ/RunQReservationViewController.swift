@@ -3,14 +3,16 @@ import SnapKit
 
 @MainActor
 final class RunQReservationViewController: UIViewController {
-    private enum Activity: String {
-        case ski
-        case other
+    var onReservationSent: (() -> Void)?
 
-        var title: String { rawValue.uppercased() }
+    private enum Activity {
+        case category
+        case other
     }
 
     private let targetUserID: String
+    private let categoryTitle: String
+    private let categoryValue: String
     private let dataStore: RunQDataStore
     private let sessionStore: CynosureSessionStore
     private let sheetView = UIView()
@@ -31,10 +33,14 @@ final class RunQReservationViewController: UIViewController {
 
     init(
         targetUserID: String,
+        category: String,
         dataStore: RunQDataStore,
         sessionStore: CynosureSessionStore
     ) {
         self.targetUserID = targetUserID
+        let normalizedCategory = Self.normalizedCategory(category)
+        categoryTitle = normalizedCategory.uppercased()
+        categoryValue = normalizedCategory.lowercased()
         self.dataStore = dataStore
         self.sessionStore = sessionStore
         super.init(nibName: nil, bundle: nil)
@@ -107,28 +113,30 @@ final class RunQReservationViewController: UIViewController {
             make.leading.equalToSuperview().offset(20)
         }
 
-        let skiButton = makeChoiceButton(title: Activity.ski.title)
-        let otherButton = makeChoiceButton(title: Activity.other.title)
-        activityButtons = [.ski: skiButton, .other: otherButton]
-        skiButton.addAction(
-            UIAction { [weak self] _ in self?.selectActivity(.ski) },
+        let categoryButton = makeChoiceButton(title: categoryTitle)
+        let otherButton = makeChoiceButton(title: "OTHER")
+        activityButtons = [.category: categoryButton, .other: otherButton]
+        categoryButton.addAction(
+            UIAction { [weak self] _ in self?.selectActivity(.category) },
             for: .touchUpInside
         )
         otherButton.addAction(
             UIAction { [weak self] _ in self?.selectActivity(.other) },
             for: .touchUpInside
         )
-        contentView.addSubview(skiButton)
+        contentView.addSubview(categoryButton)
         contentView.addSubview(otherButton)
-        skiButton.snp.makeConstraints { make in
+        categoryButton.snp.makeConstraints { make in
             make.top.equalToSuperview().offset(77)
             make.leading.equalToSuperview().offset(20)
-            make.width.equalTo(99)
+            make.width.greaterThanOrEqualTo(99)
             make.height.equalTo(41)
         }
         otherButton.snp.makeConstraints { make in
-            make.top.width.height.equalTo(skiButton)
-            make.leading.equalTo(skiButton.snp.trailing).offset(27)
+            make.top.height.equalTo(categoryButton)
+            make.leading.equalTo(categoryButton.snp.trailing).offset(27)
+            make.width.equalTo(99)
+            make.trailing.lessThanOrEqualToSuperview().offset(-20)
         }
         selectActivity(.other)
 
@@ -287,6 +295,16 @@ final class RunQReservationViewController: UIViewController {
         return button
     }
 
+    private static func normalizedCategory(_ category: String) -> String {
+        let trimmed = category.trimmingCharacters(in: .whitespacesAndNewlines)
+        let withoutBuddy = trimmed.replacingOccurrences(
+            of: "\\s+buddy$",
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        return withoutBuddy.isEmpty ? "Activity" : withoutBuddy
+    }
+
     private func configureDateField(_ field: UITextField, picker: UIDatePicker) {
         picker.datePickerMode = .date
         picker.preferredDatePickerStyle = .wheels
@@ -389,6 +407,17 @@ final class RunQReservationViewController: UIViewController {
             showToast("Please select a valid date range.")
             return
         }
+        do {
+            guard try RunQChrysalBalanceVault.shared.balance(
+                userID: requesterID
+            ) >= 200 else {
+                showToast("Not enough coins.")
+                return
+            }
+        } catch {
+            showToast("Unable to read your coin balance.")
+            return
+        }
 
         view.endEditing(true)
         showLoading()
@@ -396,7 +425,7 @@ final class RunQReservationViewController: UIViewController {
             id: UUID().uuidString.lowercased(),
             requesterID: requesterID,
             targetUserID: targetUserID,
-            activity: selectedActivity.rawValue,
+            activity: selectedActivity == .category ? categoryValue : "other",
             startDate: Calendar.current.startOfDay(for: startDatePicker.date),
             endDate: Calendar.current.startOfDay(for: endDatePicker.date),
             attendance: attendance,
@@ -405,10 +434,24 @@ final class RunQReservationViewController: UIViewController {
             ) ?? "",
             createdAt: Date()
         )
-        DispatchQueue.main.async { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self else { return }
             do {
-                try dataStore.createReservation(record)
+                _ = try RunQChrysalBalanceVault.shared.apply(
+                    delta: -200,
+                    userID: requesterID,
+                    dataStore: dataStore
+                )
+                do {
+                    try dataStore.createReservation(record)
+                } catch {
+                    _ = try? RunQChrysalBalanceVault.shared.apply(
+                        delta: 200,
+                        userID: requesterID,
+                        dataStore: dataStore
+                    )
+                    throw error
+                }
                 hideLoading()
                 showSuccessAndClose()
             } catch {
@@ -439,12 +482,8 @@ final class RunQReservationViewController: UIViewController {
     }
 
     private func showSuccessAndClose() {
-        guard let presenter = presentingViewController else {
-            dismiss(animated: true)
-            return
-        }
-        showToast("Reservation sent.", on: presenter.view)
-        dismiss(animated: true)
+        let completion = onReservationSent
+        dismiss(animated: true, completion: completion)
     }
 
     private func showToast(_ message: String, on host: UIView? = nil) {

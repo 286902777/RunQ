@@ -68,6 +68,12 @@ final class RunQDirectChatViewController: UIViewController {
         configureMessages()
         configureKeyboardHandling()
         reloadMessages(scrollsToBottom: false)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(socialDataDidChange),
+            name: .runQSocialDataDidChange,
+            object: dataStore
+        )
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--direct-chat-voice-preview") {
             DispatchQueue.main.async { [weak self] in self?.toggleVoiceMode() }
@@ -95,6 +101,20 @@ final class RunQDirectChatViewController: UIViewController {
         recorder?.stop()
         player?.stop()
         recordingURL.flatMap { try? FileManager.default.removeItem(at: $0) }
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func socialDataDidChange() {
+        guard dataStore.isUserVisible(peer.id, to: activeUserID) else {
+            view.endEditing(true)
+            recordingIndicator.hide(animated: false)
+            recorder?.stop()
+            player?.stop()
+            navigationController?.popViewController(animated: true)
+            return
+        }
+        reloadMessages(scrollsToBottom: false)
     }
 
     private func configureNavigation() {
@@ -522,7 +542,6 @@ final class RunQDirectChatViewController: UIViewController {
                     "Added to blocked list.",
                     on: navigationController?.view ?? view
                 )
-                navigationController?.popViewController(animated: true)
             } catch {
                 RunQToastPresenter.show(
                     "Unable to block this user.",

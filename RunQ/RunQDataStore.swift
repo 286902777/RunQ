@@ -87,6 +87,7 @@ struct RunQVideoCommentRecord: Identifiable, Equatable {
     let authorID: String?
     let authorName: String
     let authorAvatarAssetName: String
+    let authorAvatarData: Data?
     let text: String
     let createdAt: Date
 }
@@ -103,6 +104,7 @@ struct RunQCommentRecord: Identifiable, Equatable {
     let authorID: String?
     let authorName: String
     let authorAvatarAssetName: String
+    let authorAvatarData: Data?
     let text: String
     let createdAt: Date
 }
@@ -538,9 +540,10 @@ final class RunQDataStore: ObservableObject {
             SELECT c.id, c.video_id, c.author_id,
                    COALESCE(u.username, 'Luna'),
                    COALESCE(u.avatar_asset_name, 'runq_square_author_avatar'),
-                   c.text, c.created_at
+                   p.avatar_data, c.text, c.created_at
             FROM video_comments c
             LEFT JOIN users u ON u.id = c.author_id
+            LEFT JOIN user_profiles p ON p.user_id = c.author_id
             WHERE c.video_id = ?
             ORDER BY c.created_at
             """,
@@ -556,9 +559,10 @@ final class RunQDataStore: ObservableObject {
                     authorID: nullableText(statement, 2),
                     authorName: text(statement, 3),
                     authorAvatarAssetName: text(statement, 4),
-                    text: text(statement, 5),
+                    authorAvatarData: data(statement, 5),
+                    text: text(statement, 6),
                     createdAt: Date(
-                        timeIntervalSince1970: sqlite3_column_double(statement, 6)
+                        timeIntervalSince1970: sqlite3_column_double(statement, 7)
                     )
                 )
             )
@@ -635,6 +639,7 @@ final class RunQDataStore: ObservableObject {
         by userID: String,
         visibleTo viewerUserID: String? = nil
     ) -> [RunQPostRecord] {
+        guard isUserVisible(userID, to: viewerUserID) else { return [] }
         guard let statement = try? prepare(
             """
             SELECT post_id FROM post_likes
@@ -851,6 +856,10 @@ final class RunQDataStore: ObservableObject {
                 "isBlocked": isBlocked
             ]
         )
+        NotificationCenter.default.post(
+            name: .runQChatRoomsDidChange,
+            object: self
+        )
     }
 
     func isFollowing(sourceUserID: String, targetUserID: String) -> Bool {
@@ -1040,8 +1049,9 @@ final class RunQDataStore: ObservableObject {
             """
             SELECT c.id, c.post_id, c.author_id, COALESCE(u.username, 'Member'),
                    COALESCE(u.avatar_asset_name, 'runq_square_author_avatar'),
-                   c.text, c.created_at
+                   p.avatar_data, c.text, c.created_at
             FROM comments c LEFT JOIN users u ON u.id = c.author_id
+            LEFT JOIN user_profiles p ON p.user_id = c.author_id
             WHERE c.post_id = ? ORDER BY c.created_at
             """,
             values: [.text(postID)]
@@ -1055,8 +1065,9 @@ final class RunQDataStore: ObservableObject {
                     authorID: nullableText(statement, 2),
                     authorName: text(statement, 3),
                     authorAvatarAssetName: text(statement, 4),
-                    text: text(statement, 5),
-                    createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 6))
+                    authorAvatarData: data(statement, 5),
+                    text: text(statement, 6),
+                    createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 7))
                 )
             )
         }
@@ -1184,7 +1195,32 @@ final class RunQDataStore: ObservableObject {
                 )
             )
         }
-        return result.filter { isUserVisible($0.createdBy, to: userID) }
+        let visibleRooms = result.filter {
+            isUserVisible($0.createdBy, to: userID)
+        }
+        guard let userID else { return visibleRooms }
+        return visibleRooms.map { room in
+            let visibleMembers = chatRoomMembers(
+                roomID: room.id,
+                visibleTo: userID
+            )
+            return RunQChatRoomRecord(
+                id: room.id,
+                name: room.name,
+                participantLimit: room.participantLimit,
+                participantCount: visibleMembers.count,
+                avatarData: room.avatarData,
+                createdBy: room.createdBy,
+                ownerAvatarAssetName: room.ownerAvatarAssetName,
+                ownerAvatarData: room.ownerAvatarData,
+                maleParticipantCount: visibleMembers.filter {
+                    $0.gender.lowercased() == "male"
+                }.count,
+                femaleParticipantCount: visibleMembers.filter {
+                    $0.gender.lowercased() == "female"
+                }.count
+            )
+        }
     }
 
     func nextChatRoomID() -> String {
@@ -2265,16 +2301,27 @@ final class RunQDataStore: ObservableObject {
                     in: .whitespacesAndNewlines
                 )
                 if !comment.isEmpty {
+                    let commentAuthorID = "seed-user-\(max(1, index))"
                     try execute(
                         """
                         INSERT OR IGNORE INTO comments
                         (id, post_id, author_id, text, created_at)
-                        VALUES (?, ?, NULL, ?, ?)
+                        VALUES (?, ?, ?, ?, ?)
                         """,
                         values: [
                             .text("seed-comment-\(index + 1)"),
-                            .text(postID), .text(comment),
+                            .text(postID), .text(commentAuthorID), .text(comment),
                             .double(Date().timeIntervalSince1970)
+                        ]
+                    )
+                    try execute(
+                        """
+                        UPDATE comments SET author_id = ?
+                        WHERE id = ? AND author_id IS NULL
+                        """,
+                        values: [
+                            .text(commentAuthorID),
+                            .text("seed-comment-\(index + 1)")
                         ]
                     )
                 }
@@ -2314,6 +2361,7 @@ final class RunQDataStore: ObservableObject {
                         in: .whitespacesAndNewlines
                     )
                     if !videoComment.isEmpty {
+                        let commentAuthorID = "seed-user-\(max(1, index))"
                         try execute(
                             """
                             INSERT OR IGNORE INTO video_comments
@@ -2322,9 +2370,19 @@ final class RunQDataStore: ObservableObject {
                             """,
                             values: [
                                 .text("seed-video-comment-\(index + 1)"),
-                                .text(videoID), .null,
+                                .text(videoID), .text(commentAuthorID),
                                 .text(videoComment),
                                 .double(Date().timeIntervalSince1970)
+                            ]
+                        )
+                        try execute(
+                            """
+                            UPDATE video_comments SET author_id = ?
+                            WHERE id = ? AND author_id IS NULL
+                            """,
+                            values: [
+                                .text(commentAuthorID),
+                                .text("seed-video-comment-\(index + 1)")
                             ]
                         )
                     }
@@ -2769,7 +2827,7 @@ final class RunQDataStore: ObservableObject {
         let videoComment: String
     }
 
-    private static let starterDataVersion = 6
+    private static let starterDataVersion = 7
 
     private static func videoFeedSection(
         for fileName: String

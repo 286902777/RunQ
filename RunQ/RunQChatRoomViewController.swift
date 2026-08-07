@@ -5,6 +5,7 @@ import UIKit
 @MainActor
 final class RunQChatRoomViewController: UIViewController {
     private struct VoiceParticipant {
+        let userID: String?
         let name: String
         let avatarAssetName: String?
         let avatarData: Data?
@@ -96,6 +97,18 @@ final class RunQChatRoomViewController: UIViewController {
         configureMessages()
         configureKeyboardHandling()
         reloadMessages()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(socialDataDidChange),
+            name: .runQSocialDataDidChange,
+            object: dataStore
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(chatRoomsDidChange),
+            name: .runQChatRoomsDidChange,
+            object: dataStore
+        )
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -129,6 +142,32 @@ final class RunQChatRoomViewController: UIViewController {
         isRecordPressActive = false
         recordButton.alpha = 1
         recordButton.accessibilityLabel = "Hold to record"
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func socialDataDidChange() {
+        refreshVisibleChatRoom()
+    }
+
+    @objc private func chatRoomsDidChange() {
+        refreshVisibleChatRoom()
+    }
+
+    private func refreshVisibleChatRoom() {
+        guard dataStore.isUserVisible(
+            room.createdBy,
+            to: sessionStore.currentUser?.id
+        ) else {
+            view.endEditing(true)
+            recordingIndicator.hide(animated: false)
+            recorder?.stop()
+            player?.stop()
+            navigationController?.popViewController(animated: true)
+            return
+        }
+        reloadParticipants()
+        reloadMessages()
     }
 
     private func configureBackground() {
@@ -389,6 +428,7 @@ final class RunQChatRoomViewController: UIViewController {
         )
         participants = members.prefix(8).map { member in
             VoiceParticipant(
+                userID: member.id,
                 name: member.username,
                 avatarAssetName: member.avatarAssetName,
                 avatarData: dataStore.profileDetails(for: member.id).avatarData,
@@ -401,6 +441,7 @@ final class RunQChatRoomViewController: UIViewController {
         )
         participants.append(contentsOf: (0..<openSeatCount).map { _ in
             VoiceParticipant(
+                userID: nil,
                 name: "Sit down",
                 avatarAssetName: nil,
                 avatarData: nil,
@@ -623,7 +664,6 @@ final class RunQChatRoomViewController: UIViewController {
                     "Added to blocked list.",
                     on: navigationController?.view ?? view
                 )
-                navigationController?.popViewController(animated: true)
             } catch {
                 RunQToastPresenter.show(
                     "Unable to block this user.",
@@ -705,6 +745,12 @@ extension RunQChatRoomViewController: UICollectionViewDataSource, UICollectionVi
                 avatarData: participant.avatarData,
                 isOpenSeat: participant.isOpenSeat
             )
+            let canOpenProfile = participant.userID != nil
+                && participant.userID != sessionStore.currentUser?.id
+            cell.onAvatar = canOpenProfile ? { [weak self] in
+                guard let userID = participant.userID else { return }
+                self?.openUserProfile(userID)
+            } : nil
             return cell
         }
         switch messageItems[indexPath.item] {
@@ -887,7 +933,14 @@ private final class RunQChatVoiceMessageCell: UICollectionViewCell {
 
 private final class RunQVoiceParticipantCell: UICollectionViewCell {
     static let reuseIdentifier = "RunQVoiceParticipantCell"
+    var onAvatar: (() -> Void)? {
+        didSet {
+            avatarButton.isUserInteractionEnabled = onAvatar != nil
+            avatarButton.accessibilityElementsHidden = onAvatar == nil
+        }
+    }
     private let avatar = UIImageView()
+    private let avatarButton = UIButton(type: .custom)
     private let nameLabel = UILabel()
     private let microphone = UIImageView(image: UIImage(named: "runq_chatbox_speaker_microphone"))
     private let plusLabel = UILabel()
@@ -910,15 +963,28 @@ private final class RunQVoiceParticipantCell: UICollectionViewCell {
         plusLabel.backgroundColor = UIColor.white.withAlphaComponent(0.24)
         plusLabel.layer.cornerRadius = 29
         plusLabel.clipsToBounds = true
-        [avatar, plusLabel, microphone, nameLabel].forEach(contentView.addSubview)
+        avatarButton.accessibilityLabel = "Open participant profile"
+        avatarButton.addAction(
+            UIAction { [weak self] _ in self?.onAvatar?() },
+            for: .touchUpInside
+        )
+        [avatar, plusLabel, microphone, nameLabel, avatarButton].forEach(
+            contentView.addSubview
+        )
         avatar.snp.makeConstraints { make in make.top.centerX.equalToSuperview(); make.size.equalTo(58) }
         plusLabel.snp.makeConstraints { make in make.top.centerX.equalToSuperview(); make.size.equalTo(58) }
         microphone.snp.makeConstraints { make in make.trailing.equalTo(avatar).offset(1); make.bottom.equalTo(avatar).offset(1); make.size.equalTo(20) }
         nameLabel.snp.makeConstraints { make in make.top.equalTo(avatar.snp.bottom).offset(12); make.centerX.equalToSuperview(); make.width.equalTo(76) }
+        avatarButton.snp.makeConstraints { make in make.edges.equalTo(avatar) }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        onAvatar = nil
+    }
 
     func configure(
         name: String,
@@ -932,6 +998,7 @@ private final class RunQVoiceParticipantCell: UICollectionViewCell {
         avatar.isHidden = isOpenSeat
         microphone.isHidden = isOpenSeat
         plusLabel.isHidden = !isOpenSeat
+        avatarButton.isHidden = isOpenSeat
     }
 }
 

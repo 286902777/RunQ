@@ -341,7 +341,7 @@ extension RunQUIKitHomeViewController: UICollectionViewDataSource, UICollectionV
                 for: buddy.id,
                 visibleTo: sessionStore.currentUser?.id
             ).first
-            cell.configure(user: buddy, likeCount: post?.likeCount ?? 0)
+            cell.configure(user: buddy, post: post)
             cell.onAction = { [weak self] in
                 guard let self, requireAccount() else { return }
                 openBuddyProfile(buddy)
@@ -569,8 +569,17 @@ private final class RunQHomeBuddyCell: UICollectionViewCell {
         onAvatar = nil
     }
 
-    func configure(user: RunQUserRecord, likeCount: Int) {
-        photoView.image = UIImage(named: user.avatarAssetName)
+    func configure(user: RunQUserRecord, post: RunQPostRecord?) {
+        if let imageData = post?.imageData,
+           let image = UIImage(data: imageData) {
+            photoView.image = image
+        } else if let imageAssetName = post?.imageAssetName,
+                  !imageAssetName.isEmpty,
+                  let image = UIImage(named: imageAssetName) {
+            photoView.image = image
+        } else {
+            photoView.image = UIImage(named: user.avatarAssetName)
+        }
         titleLabel.text = user.category.uppercased()
         usernameLabel.text = "@\(user.username.uppercased())"
         ageBadge.configure(
@@ -580,7 +589,7 @@ private final class RunQHomeBuddyCell: UICollectionViewCell {
             text: "AGE \(user.age)"
         )
         certificationLabel.text = user.certificate
-        likeCountLabel.text = "\(likeCount)"
+        likeCountLabel.text = "\(post?.likeCount ?? 0)"
     }
 
     private func configureViews() {
