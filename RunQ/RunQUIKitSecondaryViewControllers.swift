@@ -185,86 +185,86 @@ final class RunQUIKitWalletViewController: UIViewController {
     //        'qnrcuelbtiuflyky', //49.99
     //        'ymohxnvpkqxutvab', //99.99
     private static let packageCatalog = [
-        WalletPackage(
-            productID: "lvbsvhxcgcrvesor",
-            coins: 400,
-            price: "$0.99"
-        ),
-        WalletPackage(
-            productID: "dxismgcwewhrtezo",
-            coins: 2450,
-            price: "$4.99"
-        ),
-        WalletPackage(
-            productID: "khtxlcejaxmqcsra",
-            coins: 4900,
-            price: "$9.99"
-        ),
-        WalletPackage(
-            productID: "yadwwvxspgxwlndb",
-            coins: 9800,
-            price: "$19.99"
-        ),
-        WalletPackage(
-            productID: "qnrcuelbtiuflyky",
-            coins: 24500,
-            price: "$49.99"
-        ),
-        WalletPackage(
-            productID: "ymohxnvpkqxutvab",
-            coins: 49000,
-            price: "$99.99"
-        ),//test
 //        WalletPackage(
-//            productID: "rubvqicltnpwayoa",
+//            productID: "lvbsvhxcgcrvesor",
 //            coins: 400,
 //            price: "$0.99"
 //        ),
 //        WalletPackage(
-//            productID: "piqdicnntezedkyf",
-//            coins: 800,
-//            price: "$1.99"
-//        ),
-//        WalletPackage(
-//            productID: "ddaxdvsxpmpnnzuu",
+//            productID: "dxismgcwewhrtezo",
 //            coins: 2450,
 //            price: "$4.99"
 //        ),
 //        WalletPackage(
-//            productID: "eqetdpxvnrfsjskx",
+//            productID: "khtxlcejaxmqcsra",
 //            coins: 4900,
 //            price: "$9.99"
 //        ),
 //        WalletPackage(
-//            productID: "mvjiwnvcmzwjzgzv",
-//            coins: 6400,
-//            price: "$12.99"
-//        ),
-//        WalletPackage(
-//            productID: "ergjyulgcgqrahcp",
+//            productID: "yadwwvxspgxwlndb",
 //            coins: 9800,
 //            price: "$19.99"
 //        ),
 //        WalletPackage(
-//            productID: "jyasongdujlaxdbv",
-//            coins: 17400,
-//            price: "$39.99"
-//        ),
-//        WalletPackage(
-//            productID: "ulamjxqxbwflqnya",
+//            productID: "qnrcuelbtiuflyky",
 //            coins: 24500,
 //            price: "$49.99"
 //        ),
 //        WalletPackage(
-//            productID: "vhljnpleyhykkzxq",
-//            coins: 34500,
-//            price: "$69.99"
-//        ),
-//        WalletPackage(
-//            productID: "kiddcrzdapzdmztr",
+//            productID: "ymohxnvpkqxutvab",
 //            coins: 49000,
 //            price: "$99.99"
-//        )
+//        ),//test
+        WalletPackage(
+            productID: "rubvqicltnpwayoa",
+            coins: 400,
+            price: "$0.99"
+        ),
+        WalletPackage(
+            productID: "piqdicnntezedkyf",
+            coins: 800,
+            price: "$1.99"
+        ),
+        WalletPackage(
+            productID: "ddaxdvsxpmpnnzuu",
+            coins: 2450,
+            price: "$4.99"
+        ),
+        WalletPackage(
+            productID: "eqetdpxvnrfsjskx",
+            coins: 4900,
+            price: "$9.99"
+        ),
+        WalletPackage(
+            productID: "mvjiwnvcmzwjzgzv",
+            coins: 6400,
+            price: "$12.99"
+        ),
+        WalletPackage(
+            productID: "ergjyulgcgqrahcp",
+            coins: 9800,
+            price: "$19.99"
+        ),
+        WalletPackage(
+            productID: "jyasongdujlaxdbv",
+            coins: 17400,
+            price: "$39.99"
+        ),
+        WalletPackage(
+            productID: "ulamjxqxbwflqnya",
+            coins: 24500,
+            price: "$49.99"
+        ),
+        WalletPackage(
+            productID: "vhljnpleyhykkzxq",
+            coins: 34500,
+            price: "$69.99"
+        ),
+        WalletPackage(
+            productID: "kiddcrzdapzdmztr",
+            coins: 49000,
+            price: "$99.99"
+        )
     ]
 
     private let dataStore: RunQDataStore
